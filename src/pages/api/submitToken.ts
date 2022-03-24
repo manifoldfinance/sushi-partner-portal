@@ -45,13 +45,14 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
     },
   } = await octokit.request("GET /repos/{owner}/{repo}/branches/{branch}", {
     owner,
-    repo: "logos",
-    branch: "main",
+    repo: "list",
+    branch: "master",
   });
 
+  // Filter out characters that github / ... might not like
   const displayName = tokenData.symbol.toLowerCase().replace(/( )|(\.)/g, "_");
 
-  // find unused branch name
+  // Find unused branch name
   const branch = await (async function () {
     const branches: string[] = [];
 
@@ -60,7 +61,7 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
         "GET /repos/{owner}/{repo}/branches",
         {
           owner,
-          repo: "logos",
+          repo: "list",
           per_page: 100,
           page: i,
         }
@@ -89,116 +90,123 @@ const handler = async (req: NextApiRequest, res: NextApiResponse) => {
   // Create new branch
   await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
     owner,
-    repo: "logos",
+    repo: "list",
     ref: `refs/heads/${branch}`,
     sha: latestIconsSha,
   });
 
-  const imagePath = `network/${ChainKey[
+  const imagePath = `logos/token-logos/network/${ChainKey[
     ChainId[chainId]
   ].toLowerCase()}/${checksummedAddress}.jpg`;
 
   try {
+    // Figure out if image already exists, overwrite if it does
+    let previousImageFileSha: string | undefined;
+
+    try {
+      ({
+        data: { sha: previousImageFileSha },
+      } = (await octokit.request("GET /repos/{owner}/{repo}/contents/{path}", {
+        owner,
+        repo: "list",
+        branch: "master",
+        path: imagePath,
+      })) as any);
+    } catch {}
+
     // Upload image
     await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
       owner,
-      repo: "logos",
+      repo: "list",
       branch: branch,
       path: imagePath,
       content: tokenIcon.split(",")[1],
       message: `Upload ${displayName} icon`,
+      sha: previousImageFileSha,
     });
-  } catch {
-    res.status(500).json({ error: "Token image already exists." });
+  } catch (e) {
+    res.status(500).json({ error: "Failed to add token image" });
     return;
   }
 
-  // Open icon PR
-  const {
-    data: { html_url: iconPr },
-  } = await octokit.request("POST /repos/{owner}/{repo}/pulls", {
-    owner,
-    repo: "logos",
-    title: `Icon: ${displayName}`,
-    head: branch,
-    base: "main",
-    body: `Name: ${tokenData.name}\nSymbol: ${tokenData.symbol}\nDecimals: ${tokenData.decimals}\nImage: https://github.com/${owner}/logos/tree/${branch}/${imagePath}`,
-  });
+  const listPath = `lists/token-lists/default-token-list/tokens/${ChainKey[
+    ChainId[chainId]
+  ].toLowerCase()}.json`;
 
-  // SDK has "mainnet" as "ethereum"
-  const listPath = `tokens/${ChainKey[ChainId[chainId]]
-    .toLowerCase()
-    .replace("ethereum", "mainnet")}.json`;
-
-  // Get latest commit for the new branch
-  const {
-    data: {
-      commit: { sha: latestListSha },
-    },
-  } = await octokit.request("GET /repos/{owner}/{repo}/branches/{branch}", {
-    owner,
-    repo: "default-token-list",
-    branch: "master",
-  });
-
-  // Get current list to append to
+  // Get current token list to append to
   const { data: currentListData } = (await octokit.request(
     "GET /repos/{owner}/{repo}/contents/{path}",
     {
       owner,
-      repo: "default-token-list",
+      repo: "list",
       branch: "master",
       path: listPath,
     }
   )) as any;
 
-  // Append to current list
-  const newList = [
-    ...JSON.parse(
-      Buffer.from(currentListData.content, "base64").toString("ascii")
-    ),
-    {
-      name: tokenData.name,
-      address: checksummedAddress,
-      symbol: tokenData.symbol,
-      decimals: tokenData.decimals,
-      chainId: chainId,
-      logoURI: `https://raw.githubusercontent.com/${owner}/logos/main/${imagePath}`,
-    },
-  ];
+  const currentList = JSON.parse(
+    Buffer.from(currentListData.content, "base64").toString("ascii")
+  );
 
-  // Create new branch
-  await octokit.request("POST /repos/{owner}/{repo}/git/refs", {
-    owner,
-    repo: "default-token-list",
-    ref: `refs/heads/${branch}`,
-    sha: latestListSha,
-  });
+  // No need to update token list when entry already exists
+  // For cases when only updating the image
+  if (!currentList.find((entry) => entry.address === checksummedAddress)) {
+    // Append to current list
+    const newList = [
+      ...currentList,
+      {
+        name: tokenData.name,
+        address: checksummedAddress,
+        symbol: tokenData.symbol,
+        decimals: tokenData.decimals,
+        chainId: chainId,
+        logoURI: `https://raw.githubusercontent.com/${owner}/list/master/${imagePath}`,
+      },
+    ];
 
-  // Upload new list
-  await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
-    owner,
-    repo: "default-token-list",
-    branch: branch,
-    path: listPath,
-    content: Buffer.from(JSON.stringify(newList, null, 2)).toString("base64"),
-    message: `Add ${displayName} on ${ChainId[chainId].toLowerCase()}`,
-    sha: currentListData.sha,
-  });
+    // Upload new list
+    await octokit.request("PUT /repos/{owner}/{repo}/contents/{path}", {
+      owner,
+      repo: "list",
+      branch: branch,
+      path: listPath,
+      content: Buffer.from(JSON.stringify(newList, null, 2)).toString("base64"),
+      message: `Add ${displayName} on ${ChainId[chainId].toLowerCase()}`,
+      sha: currentListData.sha,
+    });
+  }
 
   // Open List PR
   const {
     data: { html_url: listPr },
   } = await octokit.request("POST /repos/{owner}/{repo}/pulls", {
     owner,
-    repo: "default-token-list",
+    repo: "list",
     title: `Token: ${displayName}`,
     head: branch,
     base: "master",
-    body: `Name: ${tokenData.name}\nSymbol: ${tokenData.symbol}\nDecimals: ${tokenData.decimals}\nImage: https://github.com/${owner}/logos/tree/${branch}/${imagePath}\nImage PR: ${iconPr}`,
+    body: `Name: ${tokenData.name}
+      Symbol: ${tokenData.symbol}
+      Decimals: ${tokenData.decimals}
+      CoinGecko: ${await getCoinGecko(chainId, checksummedAddress)}
+      Image: https://github.com/${owner}/list/tree/${branch}/${imagePath}
+      ![${displayName}](https://raw.githubusercontent.com/${owner}/list/${branch}/${imagePath})
+    `,
   });
 
-  res.status(200).json({ iconPr, listPr });
+  res.status(200).json({ listPr });
 };
 
 export default handler;
+
+async function getCoinGecko(chainId: ChainId, address: string) {
+  return await fetch(
+    `https://api.coingecko.com/api/v3/coins/${ChainId[
+      chainId
+    ].toLowerCase()}/contract/${address}`
+  )
+    .then((data) => data.json())
+    .then((data) =>
+      data.id ? `https://www.coingecko.com/en/coins/${data.id}` : "Not Found"
+    );
+}

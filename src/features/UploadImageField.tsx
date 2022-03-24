@@ -16,7 +16,7 @@ interface UploadImageField {
 
 const UploadImageField: FC<UploadImageField> = ({ editor }) => {
   const { register, watch, setValue } = useFormContext();
-  const [logoId] = watch(["logoId"]);
+  const [logoId, imageSize] = watch(["logoId", "imageSize"]);
 
   const onDrop = useCallback(
     async (acceptedFiles) => {
@@ -29,8 +29,8 @@ const UploadImageField: FC<UploadImageField> = ({ editor }) => {
 
       Resizer.imageFileResizer(
         acceptedFiles[0],
-        64,
-        64,
+        imageSize,
+        imageSize,
         "PNG",
         100,
         0,
@@ -40,11 +40,13 @@ const UploadImageField: FC<UploadImageField> = ({ editor }) => {
             setValue("logoId", id);
           }),
         "base64",
-        64,
-        64
+        0,
+        0
       );
+
+      setValue("imageFile", acceptedFiles[0]);
     },
-    [editor, logoId, setValue]
+    [editor, imageSize, logoId, setValue]
   );
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } =
@@ -65,7 +67,7 @@ const UploadImageField: FC<UploadImageField> = ({ editor }) => {
       <input {...register("logoId")} className="hidden" />
       <input {...register("logoUri")} className="hidden" />
 
-      <div className="space-y-1 text-center flex flex-col items-center">
+      <div className="flex flex-col items-center space-y-1 text-center">
         {isDragReject ? (
           <ExclamationIcon width={48} />
         ) : isDragActive ? (
@@ -84,7 +86,7 @@ const UploadImageField: FC<UploadImageField> = ({ editor }) => {
           >
             <label
               htmlFor="file-upload"
-              className="cursor-pointer outline-none"
+              className="outline-none cursor-pointer"
             >
               {isDragReject
                 ? "File is not supported"
@@ -96,7 +98,7 @@ const UploadImageField: FC<UploadImageField> = ({ editor }) => {
               id="file-upload"
               name="file-upload"
               type="file"
-              className="sr-only outline-none"
+              className="outline-none sr-only"
               {...getInputProps()}
             />
           </Typography>

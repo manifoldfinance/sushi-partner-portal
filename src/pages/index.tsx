@@ -8,6 +8,7 @@ import Loader from "app/components/Loader";
 import Typography from "app/components/Typography";
 import Web3Network from "app/components/Web3Network";
 import BackgroundImageMakerField from "app/features/BackgroundMaker/BackgroundMakerField";
+import SizeSlider from "app/features/SizeSlider";
 import UploadImageField from "app/features/UploadImageField";
 import { classNames } from "app/functions";
 import { addressValidator } from "app/functions/validators";
@@ -27,6 +28,8 @@ enum SubmitState {
 const schema = yup.object().shape({
   tokenAddress: addressValidator.required("Please enter a valid ERC20-address"),
   background: yup.string(),
+  imageSize: yup.number(),
+  imageFile: yup.string(),
 });
 
 interface FormType {
@@ -34,25 +37,31 @@ interface FormType {
   background: string;
   logoId: string;
   logoUri: string;
+  imageSize: number;
+  imageFile: string;
 }
 
 export default function Home() {
   const methods = useForm<FormType>({
     resolver: yupResolver(schema),
+    defaultValues: {
+      imageSize: 86,
+    },
   });
   const { watch } = methods;
   const [chainId, setChainId] = useState<ChainId>(ChainId.ETHEREUM);
-  const [tokenAddress, logoId, logoUri, background] = watch([
+  const [tokenAddress, logoId, logoUri, background, imageFile] = watch([
     "tokenAddress",
     "logoId",
     "logoUri",
     "background",
+    "imageFile",
   ]);
   const [editor, setEditor] = useState<any>();
 
   const [submitState, setSubmitState] = useState<{
     state: SubmitState;
-    data?: { iconPr: string; listPr: string };
+    data?: { listPr: string };
     error?: string;
   }>({ state: SubmitState.Nothing });
 
@@ -146,21 +155,28 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-              <div className="col-span-6">
+              {imageFile && (
+                <div className="col-span-6">
+                  <SizeSlider editor={editor} />
+                </div>
+              )}
+              <div className="col-span-3">
                 <BackgroundImageMakerField editor={editor} />
               </div>
               <div
                 className={classNames(
-                  "col-span-6",
+                  "col-span-3 border-l border-dark-800 pl-7",
                   !(logoId || logoUri) ? "hidden" : "block"
                 )}
               >
                 <Typography weight={700}>Preview</Typography>
-                <div className="mt-2 flex w-[128px] h-[128px] rounded overflow-hidden">
-                  <ImageEditor setInstance={setEditor} />
+                <div className="mt-2 w-[128px] flex">
+                  <div className="flex w-[128px] h-[128px] rounded overflow-hidden">
+                    <ImageEditor setInstance={setEditor} />
+                  </div>
                 </div>
               </div>
-              <div className="col-span-6 flex justify-end">
+              <div className="flex justify-end col-span-6">
                 <Button
                   disabled={
                     (tokenAddress && !tokenData?.symbol) ||
@@ -184,44 +200,27 @@ export default function Home() {
                 <Typography
                   weight={700}
                   variant="sm"
-                  className="col-span-6 text-red text-center"
+                  className="col-span-6 text-center text-red"
                 >
                   {submitState?.error}
                 </Typography>
               )}
               {submitState?.data && (
-                <div className="col-span-3 flex flex-col gap-5 p-4 border border-dark-800 bg-dark-1000/20 rounded">
-                  <div className="flex flex-col gap-1">
-                    <Typography variant="sm" weight={700}>
-                      Icon pull request
-                    </Typography>
-                    <Typography
-                      variant="sm"
-                      className="cursor-pointer text-blue-400 hover:text-blue-600"
-                    >
-                      <a
-                        target="_blank"
-                        rel="noreferrer"
-                        href={submitState.data?.iconPr}
-                      >
-                        https://github.com/sushiswap/sushi-partner-portal/settings/secrets/actions
-                      </a>
-                    </Typography>
-                  </div>
+                <div className="flex flex-col col-span-3 gap-5 p-4 border rounded border-dark-800 bg-dark-1000/20">
                   <div className="flex flex-col gap-1">
                     <Typography variant="sm" weight={700}>
                       List pull request
                     </Typography>
                     <Typography
                       variant="sm"
-                      className="cursor-pointer  text-blue-400 hover:text-blue-600"
+                      className="text-blue-400 cursor-pointer hover:text-blue-600"
                     >
                       <a
                         target="_blank"
                         rel="noreferrer"
                         href={submitState.data?.listPr}
                       >
-                        https://github.com/sushiswap/sushi-partner-portal/settings/secrets/actions
+                        {submitState.data?.listPr}
                       </a>
                     </Typography>
                   </div>
